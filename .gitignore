@@ -217,12 +217,15 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Raw data - too large for GitHub
-data/raw/
+# this ignores contents but keeps the folder via .gitkeep
+data/raw/*
+!data/raw/.gitkeep
 
-# Processed and output data - can be regenerated from code
-data/processed/
-data/output/
+data/processed/*
+!data/processed/.gitkeep
+
+data/output/*
+!data/output/.gitkeep
 
 # Python
 __pycache__/
