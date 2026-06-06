@@ -16,7 +16,7 @@
 
 ## 🎯 What This Project Does
 
-Takes three raw, messy Airbnb CSV files and builds a complete ML pipeline to predict nightly listing prices across New York City — cleaning 90 raw columns down to 45 engineered features, training three models, and achieving **76.3% R² with $192 average prediction error** on unseen data.
+Takes three raw, messy Airbnb CSV files and builds a complete ML pipeline to predict nightly listing prices across New York City — cleaning 90 raw columns down to 45 engineered features, training three models, and achieving **76.8% R² with $188 average prediction error** on unseen data.
 
 ---
 
@@ -24,9 +24,10 @@ Takes three raw, messy Airbnb CSV files and builds a complete ML pipeline to pre
 
 | Model | Val R² | Test R² | Avg Dollar Error |
 |-------|--------|---------|-----------------|
-| Ridge Baseline | 0.629 | — | $246 |
+| Ridge Baseline | 0.629 | — | $1,170 |
 | Random Forest | 0.720 | — | $247 |
-| **XGBoost ✓** | **0.764** | **0.763** | **$192** |
+| XGBoost (default) | 0.764 | 0.763 | $192 |
+| **XGBoost (tuned) ✓** | **0.771** | **0.768** | **$188** |
 
 > Trained on 16,416 listings · Validated on 2,052 · Tested on 2,053  
 > Stratified 80/10/10 split by NYC borough · 45 training features
@@ -35,7 +36,9 @@ Takes three raw, messy Airbnb CSV files and builds a complete ML pipeline to pre
 
 ## 📈 Model Iteration History
 
-This project went through three distinct versions. Each one is documented here honestly — including a leakage mistake that was caught and fixed.
+This project went through four distinct versions. Each one is documented here honestly — including a leakage mistake that was caught and fixed, and a full hyperparameter tuning journey.
+
+---
 
 ### Version 1 — Leaked (inflated, incorrect)
 
@@ -63,7 +66,7 @@ Val/test gap is only 0.008 — model generalizes cleanly with no overfitting.
 
 ---
 
-### Version 3 — 6 New Engineered Features (current)
+### Version 3 — 6 New Engineered Features
 
 | Model | Val R² | Test R² | Avg Dollar Error |
 |-------|--------|---------|-----------------|
@@ -82,7 +85,51 @@ Val/test gap is only 0.008 — model generalizes cleanly with no overfitting.
 | `bedrooms_per_guest` | Bedrooms ÷ accommodates | Normalized space ratio |
 | `amenity_density` | Amenity count ÷ accommodates | Amenities per person, not just total count |
 
-**What happened:** Val R² moved from 0.769 → 0.764 (slight decrease) while Test R² moved from 0.761 → 0.763 (slight increase). The new features marginally hurt validation but marginally helped generalization — suggesting they add genuine signal but the model needs better hyperparameter tuning to extract full value from them. Hyperparameter tuning is the next step.
+**What happened:** Val R² moved from 0.769 → 0.764 (slight decrease) while Test R² moved from 0.761 → 0.763 (slight increase). The new features marginally hurt validation but marginally helped generalization — suggesting they add genuine signal but the model needed better hyperparameter tuning to extract full value from them.
+
+---
+
+### Version 4 — Hyperparameter Tuning ✅ (current best)
+
+| Model | Val R² | Test R² | Avg Dollar Error |
+|-------|--------|---------|-----------------|
+| Ridge Baseline | 0.629 | — | $1,170 |
+| Random Forest | 0.720 | — | $247 |
+| XGBoost (default) | 0.764 | 0.763 | $192 |
+| **XGBoost (tuned) ✓** | **0.771** | **0.768** | **$188** |
+
+**Tuning strategy — 3 steps:**
+
+| Step | Method | Purpose | Result |
+|------|--------|---------|--------|
+| 1 | Early Stopping (2000 estimators) | Find optimal tree count automatically | best_n = 627 → Val R² 0.7664 |
+| 2 | RandomizedSearchCV (50 combos, 3-fold) | Explore wide hyperparameter space | Best region found, Val R² 0.7657 |
+| 3 | GridSearchCV (72 combos, 3-fold) | Zoom into best region precisely | best params confirmed, Val R² 0.7689 |
+| 4 | Best params + Early Stopping | Re-tune tree count for final params | **722 trees, Val R² 0.7711** |
+
+**Final hyperparameters:**
+
+```
+max_depth        = 8       # deeper trees than default (6) — more expressive
+learning_rate    = 0.04    # slower than default (0.05) — learns more carefully
+subsample        = 0.8     # 80% of rows per tree — reduces overfitting
+colsample_bytree = 0.8     # 80% of features per tree — reduces overfitting
+min_child_weight = 1       # minimum samples in leaf
+gamma            = 0       # no minimum gain threshold needed
+reg_alpha        = 0.01    # light L1 regularization
+reg_lambda       = 1       # standard L2 regularization
+n_estimators     = 722     # found by early stopping on final params
+```
+
+**What improved:**
+
+| Metric | Before Tuning | After Tuning | Δ |
+|--------|--------------|--------------|---|
+| Val R² | 0.7641 | **0.7711** | +0.0070 |
+| Test R² | 0.7627 | **0.7680** | +0.0053 |
+| Dollar Error | $191.51 | **$188.06** | **−$3.45** |
+
+Val and Test R² gap is only 0.003 — excellent generalization, no overfitting.
 
 ---
 
@@ -105,16 +152,17 @@ Identifying and fixing target leakage independently is one of the most important
 
 ## 🗺️ Feature Importance
 
-Top features driving price predictions (Version 3 — current):
+Top features driving price predictions (tuned model):
 
 ![Feature Importance](plots/feature_importance.png)
 
 Key findings:
 - `accommodates` — dominant signal, size matters most
-- `bedrooms` — second strongest
+- `bedrooms` — second strongest predictor
 - `neighbourhood_cleansed` — location (target encoded across 200+ neighbourhoods)
 - `room_type_Entire home/apt` — entire homes command significant premium
 - `property_type` — hotel rooms and rental units priced differently
+- `bathrooms_per_guest` — new engineered feature in top 10 ✅
 
 ---
 
@@ -137,7 +185,7 @@ nyc-airbnb-price-predictor/
 │   ├── 03_cleaning_calendar_data.ipynb  # aggregate 12M calendar rows
 │   ├── 04_feature_engineering.ipynb     # merge, engineer 45 features, outlier capping
 │   ├── 05_ml_pipeline.ipynb             # train/val/test split (leakage fix here)
-│   ├── 06_ml_encoding.ipynb             # encoding, scaling, train 3 models (Colab)
+│   ├── 06_ml_encoding.ipynb             # encoding, scaling, train + tune models (Colab)
 │   └── 07_eda_plots.ipynb               # all visualizations
 │
 ├── 📊 plots/
@@ -150,7 +198,7 @@ nyc-airbnb-price-predictor/
 │   └── feature_importance.png           # XGBoost top 15 features
 │
 ├── 🤖 models/
-│   └── xgboost_airbnb_model.pkl         # trained XGBoost model (2MB)
+│   └── xgboost_tuned_final.pkl          # tuned XGBoost model (best)
 │
 ├── 📁 data/
 │   ├── raw/                             # original CSVs (not in repo)
@@ -185,10 +233,13 @@ calendar.csv.gz   ──►  fill nulls smartly    ──►  amenity binary fla
                                            Train      Val       Test
                                           16,416     2,052     2,053
                                                         │
-                                              XGBoost Regressor
+                                    RandomizedSearchCV + GridSearchCV
+                                       Early Stopping (722 trees)
                                                         │
-                                              R² = 0.763
-                                           $192 avg error
+                                          XGBoost Regressor (tuned)
+                                                        │
+                                              R² = 0.768
+                                           $188 avg error
 ```
 
 ---
@@ -215,6 +266,9 @@ One-hot encoding would create 200+ columns. Used **target encoding** — replace
 
 **7. Train/val/test leakage prevention**
 All encoders and scalers fit exclusively on X_train. Target encoding computed from y_train only.
+
+**8. GridSearchCV timeout on free Colab**
+GridSearchCV with too many combinations ran for over an hour on Colab's free tier. Solved by switching to `tree_method='hist'` (GPU-optimized tree building) and narrowing the grid to 72 combinations — reducing runtime from 60+ min to under 15 min with no loss in search quality.
 
 ---
 
@@ -263,7 +317,7 @@ pip install -r requirements.txt
 import joblib
 import numpy as np
 
-model = joblib.load('models/xgboost_airbnb_model.pkl')
+model = joblib.load('models/xgboost_tuned_final.pkl')
 
 # model outputs log_price — convert back to dollars
 prediction = model.predict(X_encoded)
@@ -279,7 +333,7 @@ print(f"Predicted price: ${price_dollars[0]:.2f}/night")
 |------|---------|
 | Pandas | Data loading, cleaning, transformation |
 | NumPy | Numerical operations, log transforms |
-| Scikit-learn | Encoding, scaling, Ridge, Random Forest |
+| Scikit-learn | Encoding, scaling, Ridge, Random Forest, CV search |
 | XGBoost | Final production model |
 | Matplotlib | All visualizations |
 | Joblib | Model serialization |
@@ -289,22 +343,24 @@ print(f"Predicted price: ${price_dollars[0]:.2f}/night")
 ## 📖 What I Learned
 
 - **Target leakage** is subtle and devastating — engineered features derived from the target variable inflate scores from 0.761 to 0.991. Always trace every feature back to its source before training.
-- **Honest scores matter more than impressive scores** — a 0.763 R² you understand is worth more than a 0.991 you can't explain
-- **IQR capping** preserves data while limiting damage from extreme values
-- **Flag before filling** — null values in review scores carry information (no reviews ≠ bad reviews)
-- **Target encoding** for high-cardinality categoricals avoids column explosion
-- **Fit on train only** — the single most important rule in ML preprocessing
-- **log transform** on skewed targets dramatically improves model learning
-- **99999 sentinel values** in engineered features cause silent bugs — always inspect fill values before deriving new features from them
+- **Honest scores matter more than impressive scores** — a 0.768 R² you understand is worth more than a 0.991 you can't explain.
+- **Early stopping + grid search together** outperforms either alone — RandomizedSearchCV finds the right hyperparameter region, GridSearchCV zooms in, and early stopping re-optimizes tree count for the final param set.
+- **IQR capping** preserves data while limiting damage from extreme values.
+- **Flag before filling** — null values in review scores carry information (no reviews ≠ bad reviews).
+- **Target encoding** for high-cardinality categoricals avoids column explosion.
+- **Fit on train only** — the single most important rule in ML preprocessing.
+- **log transform** on skewed targets dramatically improves model learning.
+- **99999 sentinel values** in engineered features cause silent bugs — always inspect fill values before deriving new features from them.
+- **Free-tier compute constraints** are real — GridSearchCV needs to be designed with runtime in mind, not just search quality.
 
 ---
 
 ## 🔭 What's Next
 
-- [x] Add 6 new engineered features
-- [ ] Hyperparameter tuning with RandomizedSearchCV + GridSearchCV
+- [x] Feature engineering (6 new features)
+- [x] Hyperparameter tuning (RandomizedSearchCV + GridSearchCV + Early Stopping)
+- [ ] SHAP values for model explainability
 - [ ] Build a Streamlit web app for live price predictions
-- [ ] Add SHAP values for model explainability
 - [ ] NLP sentiment analysis on review text (VADER — fast, rule-based)
 - [ ] External data: NYC subway proximity using lat/lon
 
@@ -313,6 +369,6 @@ print(f"Predicted price: ${price_dollars[0]:.2f}/night")
 <div align="center">
 
 **Built by [master-zero1](https://github.com/master-zero1)**  
-*NYC Airbnb Data · April 2026 Scrape · XGBoost · R² = 0.763*
+*NYC Airbnb Data · April 2026 Scrape · XGBoost (tuned) · R² = 0.768 · $188 avg error*
 
 </div>
