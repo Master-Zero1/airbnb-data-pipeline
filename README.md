@@ -154,7 +154,7 @@ Identifying and fixing target leakage independently is one of the most important
 
 Top features driving price predictions (tuned model):
 
-![Feature Importance](plots/feature_importance.png)
+![Feature Importance](plots/feature_importance_tuned.png)
 
 Key findings:
 - `accommodates` — dominant signal, size matters most
@@ -168,7 +168,7 @@ Key findings:
 
 ## 📈 Model Performance
 
-![Actual vs Predicted](plots/06_actual_vs_predicted.png)
+![Actual vs Predicted](plots/actual_vs_predicted_tuned.png)
 
 Points cluster tightly around the perfect prediction line especially in the $50–$250 range. Spread increases at higher prices — expected since luxury listings ($400+) are rarer and harder to generalize from.
 
@@ -186,7 +186,7 @@ nyc-airbnb-price-predictor/
 │   ├── 04_feature_engineering.ipynb     # merge, engineer 45 features, outlier capping
 │   ├── 05_ml_pipeline.ipynb             # train/val/test split (leakage fix here)
 │   ├── 06_ml_encoding.ipynb             # encoding, scaling, train + tune models (Colab)
-│   └── 07_eda_plots.ipynb               # all visualizations
+│   └── 07_plots.ipynb                   # all visualizations
 │
 ├── 📊 plots/
 │   ├── 01_price_distribution.png        # before/after log transform
@@ -194,8 +194,8 @@ nyc-airbnb-price-predictor/
 │   ├── 03_price_by_room_type.png        # entire home vs private room
 │   ├── 04_price_map.png                 # geographic price heatmap
 │   ├── 05_correlation_heatmap.png       # feature correlations
-│   ├── 06_actual_vs_predicted.png       # model performance
-│   └── feature_importance.png           # XGBoost top 15 features
+│   ├── actual_vs_predicted_tuned.png       # model performance
+│   └── feature_importance_tuned.png           # XGBoost top 15 features
 │
 ├── 🤖 models/
 │   └── xgboost_tuned_final.pkl          # tuned XGBoost model (best)
