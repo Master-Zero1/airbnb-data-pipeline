@@ -8,6 +8,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11-blue?style=flat-square&logo=python)](https://python.org)
 [![XGBoost](https://img.shields.io/badge/XGBoost-2.0-orange?style=flat-square)](https://xgboost.readthedocs.io)
 [![Scikit-learn](https://img.shields.io/badge/Scikit--learn-1.4-red?style=flat-square)](https://scikit-learn.org)
+[![SHAP](https://img.shields.io/badge/SHAP-Explainability-purple?style=flat-square)](https://shap.readthedocs.io)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
 </div>
@@ -16,7 +17,7 @@
 
 ## 🎯 What This Project Does
 
-Takes three raw, messy Airbnb CSV files and builds a complete ML pipeline to predict nightly listing prices across New York City — cleaning 90 raw columns down to 45 engineered features, training three models, and achieving **76.8% R² with $188 average prediction error** on unseen data.
+Takes three raw, messy Airbnb CSV files and builds a complete ML pipeline to predict nightly listing prices across New York City — cleaning 90 raw columns down to 45 engineered features, training three models, tuning hyperparameters, and explaining every prediction with SHAP — achieving **76.8% R² with $188 average prediction error** on unseen data.
 
 ---
 
@@ -98,13 +99,13 @@ Val/test gap is only 0.008 — model generalizes cleanly with no overfitting.
 | XGBoost (default) | 0.764 | 0.763 | $192 |
 | **XGBoost (tuned) ✓** | **0.771** | **0.768** | **$188** |
 
-**Tuning strategy — 3 steps:**
+**Tuning strategy — 4 steps:**
 
 | Step | Method | Purpose | Result |
 |------|--------|---------|--------|
 | 1 | Early Stopping (2000 estimators) | Find optimal tree count automatically | best_n = 627 → Val R² 0.7664 |
 | 2 | RandomizedSearchCV (50 combos, 3-fold) | Explore wide hyperparameter space | Best region found, Val R² 0.7657 |
-| 3 | GridSearchCV (72 combos, 3-fold) | Zoom into best region precisely | best params confirmed, Val R² 0.7689 |
+| 3 | GridSearchCV (72 combos, 3-fold) | Zoom into best region precisely | Best params confirmed, Val R² 0.7689 |
 | 4 | Best params + Early Stopping | Re-tune tree count for final params | **722 trees, Val R² 0.7711** |
 
 **Final hyperparameters:**
@@ -150,19 +151,63 @@ Identifying and fixing target leakage independently is one of the most important
 
 ---
 
+## 🔍 Model Explainability — SHAP Values
+
+Feature importance tells you which features matter globally. SHAP goes further — it explains **why the model made each individual prediction**, assigning a + or − contribution to every feature for every listing.
+
+### Summary Plot — What drives price across all 2,052 listings?
+
+![SHAP Summary](plots/shap_summary.png)
+
+Each dot is one listing. Pink = high feature value, blue = low. Position on the x-axis = impact on the predicted price (log scale).
+
+Key findings:
+- **`neighbourhood_cleansed`** — the single most impactful feature overall, surpassing even `accommodates`. High-value neighbourhoods push price up by 0.5–1.0 log points; low-value ones pull it down just as sharply. **Location dominates everything.**
+- **`accommodates`** — large capacity (pink) strongly pushes price up. The most extreme high-price outliers are all high-capacity listings, spread far to the right.
+- **`bedrooms`** — consistent positive impact. More bedrooms = higher price across the board.
+- **`reviews_per_year`** — an engineered feature in the **top 5**. High review velocity signals a popular, in-demand listing. SHAP confirms this feature adds genuine predictive value.
+- **`longitude`** — east/west position within NYC matters independently of neighbourhood. Western Manhattan vs eastern Queens is priced differently even within the same borough.
+- **`bathrooms_per_guest`** — engineered comfort ratio in the **top 15**, validating that normalized ratios carry more signal than raw counts alone.
+
+---
+
+### Waterfall Plot — Why did the model predict ~$2,950 for this listing?
+
+![SHAP Waterfall](plots/shap_waterfall.png)
+
+Starting from the average listing price, SHAP shows exactly how each feature pushed the prediction up or down:
+
+| Feature | Value | SHAP Impact |
+|---------|-------|-------------|
+| `accommodates` | 7 guests | **+1.03** |
+| `bathrooms` | 6.5 | **+0.49** |
+| `bedrooms` | 6 | **+0.20** |
+| `neighbourhood_cleansed` | premium area | **+0.19** |
+| `total_availability_score` | 0.339 | **+0.16** |
+| `longitude` | −73.993 (Manhattan) | **+0.16** |
+| `latitude` | 40.762 | **+0.10** |
+| `estimated_occupancy_l365d` | 0 | **+0.09** |
+| 88 other features | — | **+0.19** |
+| **Base (avg listing)** | — | **5.138** (~$170/night) |
+| **Final prediction** | — | **7.984** (~$2,950/night) |
+
+The model correctly identified this as a large, luxury Manhattan property with 7 guests, 6.5 bathrooms, and 6 bedrooms — and built the price up logically, feature by feature, from the $170 average.
+
+---
+
 ## 🗺️ Feature Importance
 
-Top features driving price predictions (tuned model):
+Top 15 features by XGBoost's built-in importance score (tuned model):
 
 ![Feature Importance](plots/feature_importance_tuned.png)
 
 Key findings:
-- `accommodates` — dominant signal, size matters most
+- `accommodates` — dominant signal by raw importance score
 - `bedrooms` — second strongest predictor
 - `neighbourhood_cleansed` — location (target encoded across 200+ neighbourhoods)
-- `room_type_Entire home/apt` — entire homes command significant premium
-- `property_type` — hotel rooms and rental units priced differently
-- `bathrooms_per_guest` — new engineered feature in top 10 ✅
+- `room_type` — entire homes command a significant price premium
+- `bathrooms_per_guest` — engineered feature in top 10 ✅
+- Note: SHAP (above) reveals `neighbourhood_cleansed` has *greater overall impact* than `accommodates` when measured by actual prediction shift — a nuance the built-in importance score misses.
 
 ---
 
@@ -194,8 +239,10 @@ nyc-airbnb-price-predictor/
 │   ├── 03_price_by_room_type.png        # entire home vs private room
 │   ├── 04_price_map.png                 # geographic price heatmap
 │   ├── 05_correlation_heatmap.png       # feature correlations
-│   ├── actual_vs_predicted_tuned.png       # model performance
-│   └── feature_importance_tuned.png           # XGBoost top 15 features
+│   ├── actual_vs_predicted_tuned.png    # model performance scatter
+│   ├── feature_importance_tuned.png     # XGBoost top 15 features
+│   ├── shap_summary.png                 # SHAP beeswarm — all features, all listings
+│   └── shap_waterfall.png              # SHAP waterfall — single listing breakdown
 │
 ├── 🤖 models/
 │   └── xgboost_tuned_final.pkl          # tuned XGBoost model (best)
@@ -238,6 +285,8 @@ calendar.csv.gz   ──►  fill nulls smartly    ──►  amenity binary fla
                                                         │
                                           XGBoost Regressor (tuned)
                                                         │
+                                           SHAP Explainability
+                                                        │
                                               R² = 0.768
                                            $188 avg error
 ```
@@ -246,29 +295,32 @@ calendar.csv.gz   ──►  fill nulls smartly    ──►  amenity binary fla
 
 ## 🛠️ Key Challenges Solved
 
-**1. Price column entirely NULL in latest scrape**
+**1. Price column entirely NULL in latest scrape**  
 Inside Airbnb removed the static price column from recent datasets. Solved by extracting `price_per_night` from the `price_quote_raw` JSON blob in the new scrape format.
 
-**2. 12M row calendar file**
+**2. 12M row calendar file**  
 Aggregated per listing using `groupby().agg()` — reducing 12M rows to one row per listing with `availability_rate` and `total_days`.
 
-**3. Amenities stored as JSON-like strings**
+**3. Amenities stored as JSON-like strings**  
 `'["Wifi", "Kitchen", "TV"]'` parsed with `json.loads()` + loop to create 12 binary feature columns for high-signal amenities.
 
-**4. neighbourhood_cleansed had 200+ unique values**
+**4. neighbourhood_cleansed had 200+ unique values**  
 One-hot encoding would create 200+ columns. Used **target encoding** — replaced each neighbourhood with its mean `log_price` computed from the train set only, with global mean fallback for unseen neighbourhoods.
 
-**5. Target leakage identified and fixed**
+**5. Target leakage identified and fixed**  
 `price_per_person` and `price_per_bedroom` derived from target variable. Identified during self-review, removed before splitting. Scores corrected from 0.991 → 0.761.
 
-**6. 99999 sentinel values in date features**
+**6. 99999 sentinel values in date features**  
 `days_since_first_review` used 99999 for listings with no reviews. Dividing by 365 naively gave 273-year-old listings. Fixed with conditional logic before engineering `listing_age_years` and `reviews_per_year`.
 
-**7. Train/val/test leakage prevention**
+**7. Train/val/test leakage prevention**  
 All encoders and scalers fit exclusively on X_train. Target encoding computed from y_train only.
 
-**8. GridSearchCV timeout on free Colab**
-GridSearchCV with too many combinations ran for over an hour on Colab's free tier. Solved by switching to `tree_method='hist'` (GPU-optimized tree building) and narrowing the grid to 72 combinations — reducing runtime from 60+ min to under 15 min with no loss in search quality.
+**8. GridSearchCV timeout on free Colab**  
+GridSearchCV with too many combinations ran for over an hour on Colab's free tier. Solved by switching to `tree_method='hist'` and narrowing the grid to 72 combinations — reducing runtime from 60+ min to under 15 min with no loss in search quality.
+
+**9. Feature importance vs SHAP disagreement**  
+XGBoost's built-in importance ranked `accommodates` #1. SHAP revealed `neighbourhood_cleansed` actually has greater total prediction impact across all listings. Built-in importance counts how often a feature is used for splits; SHAP measures actual prediction shift — a meaningfully different and more reliable signal.
 
 ---
 
@@ -335,6 +387,7 @@ print(f"Predicted price: ${price_dollars[0]:.2f}/night")
 | NumPy | Numerical operations, log transforms |
 | Scikit-learn | Encoding, scaling, Ridge, Random Forest, CV search |
 | XGBoost | Final production model |
+| SHAP | Model explainability — per-prediction feature attribution |
 | Matplotlib | All visualizations |
 | Joblib | Model serialization |
 
@@ -345,13 +398,14 @@ print(f"Predicted price: ${price_dollars[0]:.2f}/night")
 - **Target leakage** is subtle and devastating — engineered features derived from the target variable inflate scores from 0.761 to 0.991. Always trace every feature back to its source before training.
 - **Honest scores matter more than impressive scores** — a 0.768 R² you understand is worth more than a 0.991 you can't explain.
 - **Early stopping + grid search together** outperforms either alone — RandomizedSearchCV finds the right hyperparameter region, GridSearchCV zooms in, and early stopping re-optimizes tree count for the final param set.
+- **SHAP reveals what feature importance hides** — built-in XGBoost importance ranked `accommodates` #1, but SHAP showed `neighbourhood_cleansed` has greater total prediction impact. The two metrics measure fundamentally different things.
 - **IQR capping** preserves data while limiting damage from extreme values.
 - **Flag before filling** — null values in review scores carry information (no reviews ≠ bad reviews).
 - **Target encoding** for high-cardinality categoricals avoids column explosion.
 - **Fit on train only** — the single most important rule in ML preprocessing.
 - **log transform** on skewed targets dramatically improves model learning.
 - **99999 sentinel values** in engineered features cause silent bugs — always inspect fill values before deriving new features from them.
-- **Free-tier compute constraints** are real — GridSearchCV needs to be designed with runtime in mind, not just search quality.
+- **Free-tier compute constraints are real** — GridSearchCV must be designed with runtime in mind, not just search quality.
 
 ---
 
@@ -359,7 +413,7 @@ print(f"Predicted price: ${price_dollars[0]:.2f}/night")
 
 - [x] Feature engineering (6 new features)
 - [x] Hyperparameter tuning (RandomizedSearchCV + GridSearchCV + Early Stopping)
-- [ ] SHAP values for model explainability
+- [x] SHAP values for model explainability
 - [ ] Build a Streamlit web app for live price predictions
 - [ ] NLP sentiment analysis on review text (VADER — fast, rule-based)
 - [ ] External data: NYC subway proximity using lat/lon
