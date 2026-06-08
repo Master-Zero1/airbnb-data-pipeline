@@ -414,7 +414,7 @@ print(f"Predicted price: ${price_dollars[0]:.2f}/night")
 - [x] Feature engineering (6 new features)
 - [x] Hyperparameter tuning (RandomizedSearchCV + GridSearchCV + Early Stopping)
 - [x] SHAP values for model explainability
-- [ ] Build a Streamlit web app for live price predictions
+- [x] Build a Streamlit web app for live price predictions
 - [ ] NLP sentiment analysis on review text (VADER — fast, rule-based)
 - [ ] External data: NYC subway proximity using lat/lon
 
@@ -442,7 +442,7 @@ analysis are entirely my own work.
 <div align="center">
 
 **Built by [master-zero1](https://github.com/master-zero1)**  
-**LIVE DEMO -> https://master-zero1-nyc-airbnb-price-predictor.streamlit.app/**
+**LIVE DEMO -> https://master-zero1-nyc-airbnb-price-predictor.streamlit.app/**  
 *NYC Airbnb Data · April 2026 Scrape · XGBoost (tuned) · R² = 0.768 · $188 avg error*
 
 </div>
